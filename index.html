@@ -202,10 +202,11 @@
    matters and isn't just cosmetic.
 ------------------------------------------------------------------- */
 
+var API_URL = 'PASTE_YOUR_EXEC_URL_HERE';   /* ← the Apps Script /exec URL */
 
 /* ---------- tiny IndexedDB wrapper ---------- */
 var DB = (function () {
-  var NAME = 'rgvbf-rosters', STORE = 'kv', db = nu ll;
+  var NAME = 'rgvbf-rosters', STORE = 'kv', db = null;
 
   function open() {
     return new Promise(function (res, rej) {
