@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#12410a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>RGVBF Session Rosters</title>
+<style>
+  :root{
+    --green:#12410a; --orange:#e85923; --danger:#b3261e;
+    --bg:#ffffff; --fg:#161816; --muted:#5d645c; --line:#dfe3dd;
+    --card:#ffffff; --chip:#f2f5f1;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#111411; --fg:#e8ebe6; --muted:#9aa396; --line:#2a2f28;
+      --card:#181c17; --chip:#1e241d;
+    }
+  }
+  *,*::before,*::after{box-sizing:inherit}
+  html{scroll-padding-top:env(safe-area-inset-top,0px)}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    -webkit-text-size-adjust:100%;
+  }
+  header{
+    background:var(--green); color:#fff; padding:14px 16px;
+    padding-top:calc(14px + env(safe-area-inset-top,0px));
+    position:sticky; top:0; z-index:20;
+  }
+  header h1{margin:0; font-size:17px; font-weight:600; letter-spacing:.2px}
+  header .sub{font-size:12px; opacity:.85; margin-top:2px}
+  .wrap{padding:12px 16px 48px; max-width:900px; margin:0 auto}
+
+  .bar{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px}
+  .pill{
+    font-size:12px; padding:4px 10px; border-radius:999px;
+    background:var(--chip); color:var(--muted);
+  }
+  .pill.off{background:#fdecea; color:var(--danger)}
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]) .pill.off{background:#3a1512; color:#ff9b91}
+  }
+
+  select,input,button{font:inherit; color:inherit}
+  select,input[type=search]{
+    width:100%; padding:11px 12px; border:1px solid var(--line);
+    border-radius:10px; background:var(--card); margin-bottom:10px;
+  }
+  button{
+    padding:11px 14px; border:1px solid var(--line); border-radius:10px;
+    background:var(--card); cursor:pointer;
+  }
+  button.primary{background:var(--green); color:#fff; border-color:var(--green)}
+  button.ghost{background:transparent}
+  .row{display:flex; gap:8px}
+  .row>*{flex:1}
+
+  .meta{font-size:12px; color:var(--muted); margin:2px 0 14px}
+
+  table{width:100%; border-collapse:collapse; font-size:15px}
+  th,td{text-align:left; padding:9px 6px; border-bottom:1px solid var(--line); vertical-align:top}
+  th{font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); font-weight:600}
+  td.nm{font-weight:600}
+  a.tel{color:var(--orange); text-decoration:none; white-space:nowrap}
+  .dash{color:var(--muted)}
+  .bad{color:var(--muted); font-style:italic}
+  .chk{display:none}
+
+  .empty{padding:36px 8px; text-align:center; color:var(--muted)}
+  .gate{max-width:380px; margin:12vh auto; padding:0 20px; text-align:center}
+  .gate p{color:var(--muted); font-size:14px}
+  .err{color:var(--danger); font-size:14px; min-height:20px}
+  .count{font-size:13px; color:var(--muted); margin-bottom:8px}
+
+  .sheet{page-break-after:always}
+  .sheet h2{font-size:16px; margin:0 0 2px}
+  .sheet .when{font-size:13px; color:var(--muted); margin:0 0 10px}
+
+  @media print{
+    header,.bar,.controls,.noprint{display:none !important}
+    body{background:#fff; color:#000; font-size:11pt}
+    .wrap{padding:0; max-width:none}
+    thead{display:table-header-group}
+    tr{page-break-inside:avoid}
+    th,td{border-bottom:1px solid #999; padding:6px 4px}
+    a.tel{color:#000; text-decoration:none}
+    .chk{display:table-cell; width:26px; border:1px solid #666}
+    .sheet{page-break-after:always}
+    .sheet:last-child{page-break-after:auto}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>RGVBF Session Rosters</h1>
+  <div class="sub" id="hdrSub">33rd Annual — November 2026</div>
+</header>
+
+<!-- passcode gate -->
+<div id="gate" class="gate" hidden>
+  <h2 style="font-size:18px">Enter passcode</h2>
+  <p>Ask the festival office. You only do this once on this device.</p>
+  <input type="password" id="pass" inputmode="text" autocomplete="off"
+         autocapitalize="none" spellcheck="false" placeholder="Passcode">
+  <button class="primary" id="unlock" style="width:100%">Unlock</button>
+  <p class="err" id="gateErr"></p>
+</div>
+
+<!-- main -->
+<div id="app" class="wrap" hidden>
+  <div class="bar noprint">
+    <span class="pill" id="net">online</span>
+    <span class="pill" id="asOf">—</span>
+  </div>
+
+  <div class="controls">
+    <select id="day"></select>
+    <select id="session"></select>
+    <input type="search" id="q" placeholder="Search name or phone" autocomplete="off">
+    <div class="row noprint">
+      <button id="refresh">Refresh</button>
+      <button id="printOne">Print this</button>
+      <button id="printAll" class="ghost">Print all</button>
+    </div>
+  </div>
+
+  <div class="meta noprint" id="status"></div>
+  <div id="out"></div>
+</div>
+
+<script>
+/* ------------------------------------------------------------------
+   RGVBF Session Rosters — offline-first roster viewer.
+
+   Data path:  Cvent → Apps Script sync → Google Sheet → this app.
+   The app NEVER talks to Cvent. It reads one endpoint and caches the
+   result on the device, so Salineño and King Ranch work with no signal.
+
+   Storage: IndexedDB, not localStorage. A guide standing in a dead zone
+   must not lose the roster to Safari's storage eviction. Installed PWAs
+   are exempt from the 7-day rule, which is why "Add to Home Screen"
+   matters and isn't just cosmetic.
+------------------------------------------------------------------- */
+
+var API_URL = 'https://script.google.com/macros/s/AKfycbznwFyCL0eyIkdq6ua4Hw3mNXpHBhEAQRU7g9fgFvbqr-jMwBcZNbG26mKPqbmmYxm5bg/exec';   /* ← the Apps Script /exec URL */
+
+/* ---------- tiny IndexedDB wrapper ---------- */
+var DB = (function () {
+  var NAME = 'rgvbf-rosters', STORE = 'kv', db = null;
+
+  function open() {
+    return new Promise(function (res, rej) {
+      if (db) return res(db);
+      var rq = indexedDB.open(NAME, 1);
+      rq.onupgradeneeded = function () {
+        if (!rq.result.objectStoreNames.contains(STORE)) rq.result.createObjectStore(STORE);
+      };
+      rq.onsuccess = function () { db = rq.result; res(db); };
+      rq.onerror = function () { rej(rq.error); };
+    });
+  }
+  function tx(mode, fn) {
+    return open().then(function (d) {
+      return new Promise(function (res, rej) {
+        var t = d.transaction(STORE, mode), s = t.objectStore(STORE), out;
+        out = fn(s);
+        t.oncomplete = function () { res(out && out.result !== undefined ? out.result : undefined); };
+        t.onerror = function () { rej(t.error); };
+      });
+    });
+  }
+  return {
+    get: function (k) { return tx('readonly', function (s) { return s.get(k); }); },
+    set: function (k, v) { return tx('readwrite', function (s) { return s.put(v, k); }); },
+    del: function (k) { return tx('readwrite', function (s) { return s.delete(k); }); }
+  };
+})();
+
+/* ---------- state ---------- */
+var state = { pass: '', data: null, day: '', session: '' };
+
+var $ = function (id) { return document.getElementById(id); };
+
+/* ---------- phone handling ----------
+   Source data is inconsistent: "+", "12263478944", "+3144941053",
+   "+11832800963". Anything we cannot make sense of is shown as plain
+   text rather than a dead tel: link, so a guide can still read it out. */
+function telLink(raw) {
+  var s = String(raw || '').trim();
+  if (!s) return '<span class="dash">—</span>';
+  var d = s.replace(/[^\d+]/g, '');
+  var digits = d.replace(/\D/g, '');
+  var dial = '';
+  if (d.charAt(0) === '+' && digits.length >= 11) dial = '+' + digits;
+  else if (digits.length === 10) dial = '+1' + digits;
+  else if (digits.length === 11 && digits.charAt(0) === '1') dial = '+' + digits;
+  if (!dial) return '<span class="bad">' + esc(s || '—') + '</span>';
+  return '<a class="tel" href="tel:' + dial + '">' + esc(pretty(dial)) + '</a>';
+}
+function pretty(dial) {
+  var m = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(dial);
+  return m ? m[1] + '-' + m[2] + '-' + m[3] : dial;
+}
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+function dayLabel(iso) {
+  if (!iso) return 'Date not set';
+  var p = iso.split('-');
+  var dt = new Date(+p[0], +p[1] - 1, +p[2]);
+  return dt.toLocaleDateString(undefined,
+    { weekday: 'long', month: 'short', day: 'numeric' });
+}
+
+/* ---------- network ---------- */
+function fetchRosters(pass) {
+  return fetch(API_URL, {
+    method: 'POST',
+    /* text/plain keeps this a "simple request" — Apps Script cannot
+       answer a CORS preflight, so application/json would fail. */
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ passcode: pass })
+  }).then(function (r) { return r.json(); });
+}
+
+/* ---------- rendering ---------- */
+function render() {
+  var d = state.data;
+  if (!d || !d.sessions || !d.sessions.length) {
+    $('out').innerHTML = '<div class="empty">No rosters yet.<br>Tap Refresh while online.</div>';
+    return;
+  }
+  var s = d.sessions.filter(function (x) { return x.id === state.session; })[0];
+  if (!s) { $('out').innerHTML = '<div class="empty">Pick a trip above.</div>'; return; }
+  $('out').innerHTML = sheetHTML(s, $('q').value.trim().toLowerCase());
+}
+
+function sheetHTML(s, needle) {
+  var people = s.people;
+  if (needle) {
+    people = people.filter(function (p) {
+      return (p.n + ' ' + p.p + ' ' + p.e + ' ' + p.q).toLowerCase().indexOf(needle) !== -1;
+    });
+  }
+  var head = '<div class="sheet"><h2>' + esc(s.name) + '</h2>' +
+    '<p class="when">' + esc(dayLabel(s.date)) +
+    (s.time ? ' · departs ' + esc(s.time) : '') +
+    ' · ' + s.people.length + ' registered</p>';
+
+  if (!people.length) return head + '<div class="empty">No one matches that search.</div></div>';
+
+  var rows = people.map(function (p) {
+    return '<tr>' +
+      '<td class="chk"></td>' +
+      '<td class="nm">' + esc(p.n) + '</td>' +
+      '<td>' + telLink(p.p) + '</td>' +
+      '<td>' + (p.e ? esc(p.e) : '<span class="dash">—</span>') + '</td>' +
+      '<td>' + telLink(p.q) + '</td>' +
+      '</tr>';
+  }).join('');
+
+  return head +
+    '<table><thead><tr>' +
+      '<th class="chk"></th><th>Name</th><th>Mobile</th>' +
+      '<th>Emergency contact</th><th>Emergency phone</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+
+function fillPickers() {
+  var d = state.data;
+  if (!d) return;
+
+  var days = [];
+  d.sessions.forEach(function (s) {
+    if (days.indexOf(s.date) === -1) days.push(s.date);
+  });
+  days.sort();
+
+  var today = new Date().toISOString().slice(0, 10);
+  if (!state.day) state.day = days.indexOf(today) !== -1 ? today : (days[0] || '');
+
+  $('day').innerHTML = days.map(function (x) {
+    return '<option value="' + esc(x) + '"' + (x === state.day ? ' selected' : '') + '>' +
+      esc(dayLabel(x)) + '</option>';
+  }).join('');
+
+  var forDay = d.sessions.filter(function (s) { return s.date === state.day; });
+  forDay.sort(function (a, b) {
+    return (a.time + a.name).localeCompare(b.time + b.name);
+  });
+  if (!forDay.filter(function (s) { return s.id === state.session; }).length) {
+    state.session = forDay.length ? forDay[0].id : '';
+  }
+  $('session').innerHTML = forDay.map(function (s) {
+    return '<option value="' + esc(s.id) + '"' + (s.id === state.session ? ' selected' : '') + '>' +
+      (s.time ? esc(s.time) + ' · ' : '') + esc(s.name) + ' (' + s.people.length + ')' +
+      '</option>';
+  }).join('');
+}
+
+/* ---------- actions ---------- */
+function load(fromNetwork) {
+  if (!fromNetwork) { render(); return Promise.resolve(); }
+  $('status').textContent = 'Refreshing…';
+  return fetchRosters(state.pass).then(function (res) {
+    if (!res.ok) {
+      if (res.error === 'bad_passcode') { lock('That passcode was not accepted.'); return; }
+      $('status').textContent = 'Server said: ' + (res.error || 'unknown error');
+      return;
+    }
+    state.data = res;
+    return DB.set('rosters', res).catch(function () {}).then(function () {
+      fillPickers(); render(); stamp();
+      $('status').textContent = '';
+    });
+  }).catch(function () {
+    $('status').textContent = navigator.onLine
+      ? 'Could not reach the server. Showing saved rosters.'
+      : 'Offline — showing saved rosters.';
+  });
+}
+
+function stamp() {
+  $('asOf').textContent = state.data && state.data.syncedAt
+    ? 'synced ' + state.data.syncedAt : '—';
+}
+
+function net() {
+  var el = $('net');
+  el.textContent = navigator.onLine ? 'online' : 'offline';
+  el.className = 'pill' + (navigator.onLine ? '' : ' off');
+}
+
+function lock(msg) {
+  state.pass = '';
+  DB.del('pass').catch(function () {});
+  $('app').hidden = true;
+  $('gate').hidden = false;
+  $('gateErr').textContent = msg || '';
+}
+
+function unlock() {
+  var v = $('pass').value.trim();
+  if (!v) return;
+  $('gateErr').textContent = 'Checking…';
+  fetchRosters(v).then(function (res) {
+    if (!res.ok) {
+      $('gateErr').textContent = res.error === 'bad_passcode'
+        ? 'Wrong passcode.' : 'Server error: ' + res.error;
+      return;
+    }
+    state.pass = v;
+    state.data = res;
+    DB.set('pass', v).catch(function () {});
+    DB.set('rosters', res).catch(function () {});
+    $('gate').hidden = true;
+    $('app').hidden = false;
+    fillPickers(); render(); stamp();
+  }).catch(function () {
+    $('gateErr').textContent = 'No connection. Connect once to set up this device.';
+  });
+}
+
+function printAll() {
+  var d = state.data;
+  if (!d) return;
+  var forDay = d.sessions.filter(function (s) { return s.date === state.day; });
+  forDay.sort(function (a, b) { return (a.time + a.name).localeCompare(b.time + b.name); });
+  var keep = $('out').innerHTML;
+  /* ignore the search box when printing all — a filtered "print all" that
+     silently omits people is the worst possible bug on a van roster */
+  $('out').innerHTML = forDay.map(function (s) { return sheetHTML(s, ''); }).join('');
+  window.print();
+  setTimeout(function () { $('out').innerHTML = keep; }, 500);
+}
+
+/* ---------- wiring ---------- */
+$('unlock').addEventListener('click', unlock);
+$('pass').addEventListener('keydown', function (e) { if (e.key === 'Enter') unlock(); });
+$('day').addEventListener('change', function () {
+  state.day = this.value; state.session = ''; fillPickers(); render();
+});
+$('session').addEventListener('change', function () { state.session = this.value; render(); });
+$('q').addEventListener('input', render);
+$('refresh').addEventListener('click', function () { load(true); });
+$('printOne').addEventListener('click', function () { window.print(); });
+$('printAll').addEventListener('click', printAll);
+window.addEventListener('online', net);
+window.addEventListener('offline', net);
+document.addEventListener('visibilitychange', function () {
+  if (!document.hidden && navigator.onLine && state.pass) load(true);
+});
+
+/* ---------- boot ---------- */
+net();
+Promise.all([
+  DB.get('pass').catch(function () { return null; }),
+  DB.get('rosters').catch(function () { return null; })
+]).then(function (r) {
+  var pass = r[0], cached = r[1];
+  if (!pass) { $('gate').hidden = false; return; }
+  state.pass = pass;
+  $('app').hidden = false;
+  if (cached) { state.data = cached; fillPickers(); render(); stamp(); }
+  if (navigator.onLine) load(true);
+  else $('status').textContent = 'Offline — showing saved rosters.';
+});
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('service-worker.js').catch(function () {});
+}
+</script>
+</body>
+</html>
