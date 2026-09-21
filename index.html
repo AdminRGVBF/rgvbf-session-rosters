@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>RGVBF Session Rosters</title>
 <style>
   :root{
@@ -78,6 +78,8 @@
   .empty{padding:36px 8px; text-align:center; color:var(--muted)}
   .gate{max-width:380px; margin:12vh auto; padding:0 20px; text-align:center}
   .gate p{color:var(--muted); font-size:14px}
+  .gate input{margin-bottom:18px}
+  .gate button{width:100%; padding:13px 14px}
   .err{color:var(--danger); font-size:14px; min-height:20px}
   .count{font-size:13px; color:var(--muted); margin-bottom:8px}
 
@@ -85,17 +87,65 @@
   .sheet h2{font-size:16px; margin:0 0 2px}
   .sheet .when{font-size:13px; color:var(--muted); margin:0 0 10px}
 
+  /* screen-only chrome for the print-only lines */
+  .ruleline,.printfoot{display:none}
+
   @media print{
+    @page{margin:14mm 12mm}
     header,.bar,.controls,.noprint{display:none !important}
-    body{background:#fff; color:#000; font-size:11pt}
+    body{background:#fff; color:#000; font:10.5pt/1.3 Georgia,"Times New Roman",serif}
     .wrap{padding:0; max-width:none}
-    thead{display:table-header-group}
-    tr{page-break-inside:avoid}
-    th,td{border-bottom:1px solid #999; padding:6px 4px}
-    a.tel{color:#000; text-decoration:none}
-    .chk{display:table-cell; width:26px; border:1px solid #666}
+
     .sheet{page-break-after:always}
     .sheet:last-child{page-break-after:auto}
+
+    /* masthead */
+    .sheet h2{
+      font-size:15pt; margin:0; letter-spacing:-.2px;
+      border-bottom:2px solid #000; padding-bottom:3pt;
+    }
+    .sheet .when{
+      font-size:9.5pt; color:#000; margin:4pt 0 0;
+      display:flex; justify-content:space-between;
+    }
+    .ruleline{
+      display:flex; gap:24pt; margin:9pt 0 7pt;
+      font-size:9pt; color:#333;
+    }
+    .ruleline span{flex:1; border-bottom:.5pt solid #999; padding-bottom:9pt}
+
+    table{font-size:10pt}
+    thead{display:table-header-group}
+    tr{page-break-inside:avoid}
+    th{
+      font-size:7.5pt; letter-spacing:.8px; color:#000;
+      border-bottom:1pt solid #000; padding:0 4pt 3pt; text-transform:uppercase;
+    }
+    td{
+      border-bottom:.5pt solid #ccc; padding:5.5pt 4pt; vertical-align:baseline;
+    }
+    tbody tr:nth-child(even) td{background:#f4f4f4}
+    td.nm{font-weight:bold}
+    a.tel{color:#000; text-decoration:none}
+    .dash,.bad{color:#666; font-style:normal}
+
+    /* a real tick box, not a full-height ruled cell */
+    th.chk,td.chk{display:table-cell; width:16pt; padding-left:0; padding-right:0}
+    td.chk::before{
+      content:""; display:inline-block; width:9pt; height:9pt;
+      border:.75pt solid #333; vertical-align:-1pt;
+    }
+    tbody tr:nth-child(even) td.chk{background:#f4f4f4}
+
+    /* column widths so names and contacts get the room they need */
+    col.c1{width:16pt} col.c2{width:27%} col.c3{width:19%}
+    col.c4{width:27%} col.c5{width:19%}
+
+    .printfoot{
+      display:block; margin-top:10pt; padding-top:4pt;
+      border-top:.5pt solid #999; font-size:8pt; color:#444;
+      display:flex; justify-content:space-between;
+    }
   }
 </style>
 </head>
@@ -112,7 +162,7 @@
   <p>Ask the festival office. You only do this once on this device.</p>
   <input type="password" id="pass" inputmode="text" autocomplete="off"
          autocapitalize="none" spellcheck="false" placeholder="Passcode">
-  <button class="primary" id="unlock" style="width:100%">Unlock</button>
+  <button class="primary" id="unlock">Unlock</button>
   <p class="err" id="gateErr"></p>
 </div>
 
@@ -153,6 +203,7 @@
 ------------------------------------------------------------------- */
 
 var API_URL = 'https://script.google.com/macros/s/AKfycbznwFyCL0eyIkdq6ua4Hw3mNXpHBhEAQRU7g9fgFvbqr-jMwBcZNbG26mKPqbmmYxm5bg/exec';   /* ← the Apps Script /exec URL */
+
 
 /* ---------- tiny IndexedDB wrapper ---------- */
 var DB = (function () {
@@ -226,8 +277,13 @@ function dayLabel(iso) {
 
 /* ---------- network ---------- */
 function fetchRosters(pass) {
-  return fetch(API_URL + '?passcode=' + encodeURIComponent(pass) + '&t=' + Date.now())
-    .then(function (r) { return r.json(); });
+  return fetch(API_URL, {
+    method: 'POST',
+    /* text/plain keeps this a "simple request" — Apps Script cannot
+       answer a CORS preflight, so application/json would fail. */
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ passcode: pass })
+  }).then(function (r) { return r.json(); });
 }
 
 /* ---------- rendering ---------- */
@@ -250,9 +306,10 @@ function sheetHTML(s, needle) {
     });
   }
   var head = '<div class="sheet"><h2>' + esc(s.name) + '</h2>' +
-    '<p class="when">' + esc(dayLabel(s.date)) +
-    (s.time ? ' · departs ' + esc(s.time) : '') +
-    ' · ' + s.people.length + ' registered</p>';
+    '<p class="when"><span>' + esc(dayLabel(s.date)) +
+      (s.time ? ' &nbsp;·&nbsp; departs ' + esc(s.time) : '') + '</span>' +
+      '<span>' + s.people.length + ' registered</span></p>' +
+    '<div class="ruleline"><span>Guide</span><span>Vehicle</span><span>Departed</span></div>';
 
   if (!people.length) return head + '<div class="empty">No one matches that search.</div></div>';
 
@@ -266,11 +323,20 @@ function sheetHTML(s, needle) {
       '</tr>';
   }).join('');
 
+  var printed = new Date().toLocaleString(undefined,
+    { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
   return head +
-    '<table><thead><tr>' +
+    '<table>' +
+    '<colgroup><col class="c1"><col class="c2"><col class="c3">' +
+      '<col class="c4"><col class="c5"></colgroup>' +
+    '<thead><tr>' +
       '<th class="chk"></th><th>Name</th><th>Mobile</th>' +
       '<th>Emergency contact</th><th>Emergency phone</th>' +
-    '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    '</tr></thead><tbody>' + rows + '</tbody></table>' +
+    '<div class="printfoot"><span>RGVBF 33rd Annual · ' + esc(s.name) + '</span>' +
+      '<span>Printed ' + esc(printed) + '</span></div>' +
+    '</div>';
 }
 
 function fillPickers() {
@@ -363,10 +429,8 @@ function unlock() {
     $('gate').hidden = true;
     $('app').hidden = false;
     fillPickers(); render(); stamp();
-  }).catch(function (err) {
-    $('gateErr').textContent = 'Request failed: ' + (err && err.message ? err.message : err) +
-      ' — check the /exec URL opens in a browser.';
-    console.log('unlock error', err, API_URL);
+  }).catch(function () {
+    $('gateErr').textContent = 'No connection. Connect once to set up this device.';
   });
 }
 
