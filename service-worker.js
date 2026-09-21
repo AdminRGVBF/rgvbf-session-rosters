@@ -22,7 +22,7 @@
  * lives in IndexedDB, which is the right place for it.
  */
 
-var CACHE_NAME = 'rgvbf-rosters-v2';
+var CACHE_NAME = 'rgvbf-rosters-v3';
 
 var SHELL = [
   './',
