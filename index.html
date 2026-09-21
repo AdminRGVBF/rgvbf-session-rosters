@@ -277,13 +277,14 @@ function dayLabel(iso) {
 
 /* ---------- network ---------- */
 function fetchRosters(pass) {
-  return fetch(API_URL, {
-    method: 'POST',
-    /* text/plain keeps this a "simple request" — Apps Script cannot
-       answer a CORS preflight, so application/json would fail. */
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ passcode: pass })
-  }).then(function (r) { return r.json(); });
+  /* GET, not POST. Apps Script's doPost goes through a 302 redirect that
+     does not reliably carry CORS headers, so a cross-origin POST fails with
+     "Failed to fetch". doGet responses do carry them. The trade-off is that
+     the passcode travels in the query string, so it lands in browser history
+     and Google's logs — rotate it after the festival.
+     &t= busts the HTTP cache, or Refresh appears to do nothing. */
+  return fetch(API_URL + '?passcode=' + encodeURIComponent(pass) + '&t=' + Date.now())
+    .then(function (r) { return r.json(); });
 }
 
 /* ---------- rendering ---------- */
@@ -429,8 +430,10 @@ function unlock() {
     $('gate').hidden = true;
     $('app').hidden = false;
     fillPickers(); render(); stamp();
-  }).catch(function () {
-    $('gateErr').textContent = 'No connection. Connect once to set up this device.';
+  }).catch(function (err) {
+    $('gateErr').textContent = 'Could not reach the server: ' +
+      (err && err.message ? err.message : err);
+    console.log('unlock failed', err, API_URL);
   });
 }
 
