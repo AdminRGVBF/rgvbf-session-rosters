@@ -368,8 +368,10 @@ function unlock() {
     $('gate').hidden = true;
     $('app').hidden = false;
     fillPickers(); render(); stamp();
-  }).catch(function () {
-    $('gateErr').textContent = 'No connection. Connect once to set up this device.';
+  }).catch(function (err) {
+    $('gateErr').textContent = 'Request failed: ' + (err && err.message ? err.message : err) +
+      ' — check the /exec URL opens in a browser.';
+    console.log('unlock error', err, API_URL);
   });
 }
 
