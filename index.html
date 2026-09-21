@@ -226,13 +226,8 @@ function dayLabel(iso) {
 
 /* ---------- network ---------- */
 function fetchRosters(pass) {
-  return fetch(API_URL, {
-    method: 'POST',
-    /* text/plain keeps this a "simple request" — Apps Script cannot
-       answer a CORS preflight, so application/json would fail. */
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ passcode: pass })
-  }).then(function (r) { return r.json(); });
+  return fetch(API_URL + '?passcode=' + encodeURIComponent(pass) + '&t=' + Date.now())
+    .then(function (r) { return r.json(); });
 }
 
 /* ---------- rendering ---------- */
