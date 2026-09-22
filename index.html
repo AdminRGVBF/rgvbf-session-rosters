@@ -37,6 +37,17 @@
     position:sticky; top:0; z-index:20;
   }
   header h1{margin:0; font-size:17px; font-weight:600; letter-spacing:.2px}
+  .brand{display:flex; align-items:center; gap:11px}
+  .brand img{
+    height:38px; width:38px; border-radius:8px; background:#fff;
+    object-fit:contain; padding:3px; flex:none;
+  }
+  /* the sheet subline: flex on screen too, or the day and the count
+     run together ("departs 05:0018 registered") */
+  .sheet .when{
+    display:flex; justify-content:space-between; gap:12px;
+    font-size:13px; color:var(--muted); margin:2px 0 12px;
+  }
   header .sub{font-size:12px; opacity:.85; margin-top:2px}
   .wrap{padding:12px 16px 48px; max-width:900px; margin:0 auto}
 
@@ -85,7 +96,6 @@
 
   .sheet{page-break-after:always}
   .sheet h2{font-size:16px; margin:0 0 2px}
-  .sheet .when{font-size:13px; color:var(--muted); margin:0 0 10px}
 
   /* screen-only chrome for the print-only lines */
   .ruleline,.printfoot{display:none}
@@ -152,8 +162,13 @@
 <body>
 
 <header>
-  <h1>RGVBF Session Rosters</h1>
-  <div class="sub" id="hdrSub">33rd Annual — November 2026</div>
+  <div class="brand">
+    <img src="icons/icon-192.png" alt="">
+    <div>
+      <h1>RGVBF Session Rosters</h1>
+      <div class="sub" id="hdrSub">33rd Annual — November 2026</div>
+    </div>
+  </div>
 </header>
 
 <!-- passcode gate -->
@@ -179,6 +194,7 @@
     <input type="search" id="q" placeholder="Search name or phone" autocomplete="off">
     <div class="row noprint">
       <button id="refresh">Refresh</button>
+      <button id="pull">Pull from Cvent</button>
       <button id="printOne">Print this</button>
       <button id="printAll" class="ghost">Print all</button>
     </div>
@@ -275,14 +291,15 @@ function dayLabel(iso) {
 }
 
 /* ---------- network ---------- */
-function fetchRosters(pass) {
+function fetchRosters(pass, action) {
   /* GET, not POST. Apps Script's doPost goes through a 302 redirect that
      does not reliably carry CORS headers, so a cross-origin POST fails with
      "Failed to fetch". doGet responses do carry them. The trade-off is that
      the passcode travels in the query string, so it lands in browser history
      and Google's logs — rotate it after the festival.
      &t= busts the HTTP cache, or Refresh appears to do nothing. */
-  return fetch(API_URL + '?passcode=' + encodeURIComponent(pass) + '&t=' + Date.now())
+  return fetch(API_URL + '?passcode=' + encodeURIComponent(pass) +
+               (action ? '&action=' + action : '') + '&t=' + Date.now())
     .then(function (r) { return r.json(); });
 }
 
@@ -339,6 +356,14 @@ function sheetHTML(s, needle) {
     '</div>';
 }
 
+/* Single ordering rule used by the pickers, the screen and Print all:
+   date → departure time → trip name. Anything without a time sorts last
+   within its day rather than jumping to the top. */
+function bySchedule(a, b) {
+  var at = a.time || '99:99', bt = b.time || '99:99';
+  return (a.date + at + a.name).localeCompare(b.date + bt + b.name);
+}
+
 function fillPickers() {
   var d = state.data;
   if (!d) return;
@@ -358,9 +383,7 @@ function fillPickers() {
   }).join('');
 
   var forDay = d.sessions.filter(function (s) { return s.date === state.day; });
-  forDay.sort(function (a, b) {
-    return (a.time + a.name).localeCompare(b.time + b.name);
-  });
+  forDay.sort(bySchedule);
   if (!forDay.filter(function (s) { return s.id === state.session; }).length) {
     state.session = forDay.length ? forDay[0].id : '';
   }
@@ -372,10 +395,14 @@ function fillPickers() {
 }
 
 /* ---------- actions ---------- */
-function load(fromNetwork) {
+function load(fromNetwork, action) {
   if (!fromNetwork) { render(); return Promise.resolve(); }
-  $('status').textContent = 'Refreshing…';
-  return fetchRosters(state.pass).then(function (res) {
+  var busy = action === 'sync';
+  $('status').textContent = busy
+    ? 'Pulling from Cvent — this takes about a minute…'
+    : 'Refreshing…';
+  if (busy) { $('pull').disabled = true; $('refresh').disabled = true; }
+  return fetchRosters(state.pass, action).then(function (res) {
     if (!res.ok) {
       if (res.error === 'bad_passcode') { lock('That passcode was not accepted.'); return; }
       $('status').textContent = 'Server said: ' + (res.error || 'unknown error');
@@ -384,18 +411,29 @@ function load(fromNetwork) {
     state.data = res;
     return DB.set('rosters', res).catch(function () {}).then(function () {
       fillPickers(); render(); stamp();
-      $('status').textContent = '';
+      $('status').textContent = res.note || '';
     });
   }).catch(function () {
     $('status').textContent = navigator.onLine
       ? 'Could not reach the server. Showing saved rosters.'
       : 'Offline — showing saved rosters.';
+  }).then(function () {
+    $('pull').disabled = false; $('refresh').disabled = false;
   });
 }
 
 function stamp() {
-  $('asOf').textContent = state.data && state.data.syncedAt
-    ? 'synced ' + state.data.syncedAt : '—';
+  var s = state.data && state.data.syncedAt;
+  if (!s) { $('asOf').textContent = '—'; return; }
+  /* the sheet stores "2026-09-21 17:09:06"; show something a guide can read */
+  var m = /(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(s);
+  if (m) {
+    var d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+    $('asOf').textContent = 'synced ' + d.toLocaleString(undefined,
+      { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  } else {
+    $('asOf').textContent = 'synced ' + String(s).slice(0, 16);
+  }
 }
 
 function net() {
@@ -440,7 +478,7 @@ function printAll() {
   var d = state.data;
   if (!d) return;
   var forDay = d.sessions.filter(function (s) { return s.date === state.day; });
-  forDay.sort(function (a, b) { return (a.time + a.name).localeCompare(b.time + b.name); });
+  forDay.sort(bySchedule);
   var keep = $('out').innerHTML;
   /* ignore the search box when printing all — a filtered "print all" that
      silently omits people is the worst possible bug on a van roster */
@@ -458,6 +496,10 @@ $('day').addEventListener('change', function () {
 $('session').addEventListener('change', function () { state.session = this.value; render(); });
 $('q').addEventListener('input', render);
 $('refresh').addEventListener('click', function () { load(true); });
+$('pull').addEventListener('click', function () {
+  if (!navigator.onLine) { $('status').textContent = 'Offline — connect first.'; return; }
+  load(true, 'sync');
+});
 $('printOne').addEventListener('click', function () { window.print(); });
 $('printAll').addEventListener('click', printAll);
 window.addEventListener('online', net);
