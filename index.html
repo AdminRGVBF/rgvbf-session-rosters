@@ -511,12 +511,41 @@ function printAll() {
   if (!d) return;
   var forDay = d.sessions.filter(function (s) { return s.date === state.day; });
   forDay.sort(bySchedule);
+  if (!forDay.length) return;
+
+  /* Ignore the search box deliberately — a filtered "print all" that
+     silently omits people is the worst possible bug on a van roster. */
   var keep = $('out').innerHTML;
-  /* ignore the search box when printing all — a filtered "print all" that
-     silently omits people is the worst possible bug on a van roster */
   $('out').innerHTML = forDay.map(function (s) { return sheetHTML(s, ''); }).join('');
+
+  /* Do NOT restore on a timer. iOS builds the print preview
+     asynchronously, so a setTimeout fires while Safari is still laying
+     out the pages — it then prints whatever is on screen by then, which
+     was a single session. Restore only once printing is genuinely over. */
+  var done = false;
+  function restore() {
+    if (done) return;
+    done = true;
+    window.removeEventListener('afterprint', restore);
+    window.removeEventListener('focus', onFocus);
+    if (mql && mql.removeListener) mql.removeListener(onChange);
+    $('out').innerHTML = keep;
+    render();
+    $('printAll').disabled = false;
+    $('status').textContent = '';
+  }
+  function onFocus() { setTimeout(restore, 400); }
+  function onChange(e) { if (!e.matches) restore(); }
+
+  var mql = window.matchMedia ? window.matchMedia('print') : null;
+  window.addEventListener('afterprint', restore);
+  window.addEventListener('focus', onFocus);          /* iOS often skips afterprint */
+  if (mql && mql.addListener) mql.addListener(onChange);
+  setTimeout(restore, 120000);                        /* last-resort safety net */
+
+  $('printAll').disabled = true;
+  $('status').textContent = 'Preparing ' + forDay.length + ' rosters to print…';
   window.print();
-  setTimeout(function () { $('out').innerHTML = keep; }, 500);
 }
 
 /* ---------- wiring ---------- */
