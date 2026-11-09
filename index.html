@@ -87,6 +87,34 @@
   .chk{display:none}
 
   .empty{padding:36px 8px; text-align:center; color:var(--muted)}
+
+  /* On a phone four columns do not fit — the emergency phone was being
+     clipped off the right edge, which is the one column you would be
+     reaching for in an emergency. Below 620px each person becomes a
+     stacked card instead. Printing is unaffected; it always uses the
+     table layout. */
+  @media screen and (max-width:620px){
+    table,tbody,tr,td{display:block; width:100%}
+    thead{display:none}
+    tr{
+      border:1px solid var(--line); border-radius:12px;
+      padding:10px 12px; margin-bottom:10px; background:var(--card);
+    }
+    td{border:0; padding:3px 0; display:flex; gap:10px; align-items:baseline}
+    td::before{
+      content:attr(data-l); flex:none; width:108px;
+      font-size:11px; letter-spacing:.4px; text-transform:uppercase;
+      color:var(--muted);
+    }
+    td.nm{
+      font-size:17px; padding-bottom:7px; margin-bottom:5px;
+      border-bottom:1px solid var(--line); display:block;
+    }
+    td.nm::before{display:none}
+    a.tel{font-size:16px}
+    .row{flex-wrap:wrap}
+    .row>*{flex:1 1 44%; min-width:0; padding:11px 8px; font-size:15px}
+  }
   .gate{max-width:380px; margin:12vh auto; padding:0 20px; text-align:center}
   .gate p{color:var(--muted); font-size:14px}
   .gate input{margin-bottom:18px}
@@ -333,10 +361,11 @@ function sheetHTML(s, needle) {
   var rows = people.map(function (p) {
     return '<tr>' +
       '<td class="chk"></td>' +
-      '<td class="nm">' + esc(p.n) + '</td>' +
-      '<td>' + telLink(p.p) + '</td>' +
-      '<td>' + (p.e ? esc(p.e) : '<span class="dash">—</span>') + '</td>' +
-      '<td>' + telLink(p.q) + '</td>' +
+      '<td class="nm" data-l="Name">' + esc(p.n) + '</td>' +
+      '<td data-l="Mobile">' + telLink(p.p) + '</td>' +
+      '<td data-l="Emergency contact">' +
+        (p.e ? esc(p.e) : '<span class="dash">—</span>') + '</td>' +
+      '<td data-l="Emergency phone">' + telLink(p.q) + '</td>' +
       '</tr>';
   }).join('');
 
@@ -425,15 +454,18 @@ function load(fromNetwork, action) {
 function stamp() {
   var s = state.data && state.data.syncedAt;
   if (!s) { $('asOf').textContent = '—'; return; }
-  /* the sheet stores "2026-09-21 17:09:06"; show something a guide can read */
-  var m = /(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(s);
-  if (m) {
-    var d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
-    $('asOf').textContent = 'synced ' + d.toLocaleString(undefined,
-      { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-  } else {
-    $('asOf').textContent = 'synced ' + String(s).slice(0, 16);
+  /* The Meta cell can arrive as "2026-11-09 14:51:03" or as a JS Date
+     string like "Mon Nov 09 2026 14:51:03 GMT-0600". Try the plain parse
+     first, then the explicit pattern. */
+  var d = new Date(s);
+  if (isNaN(d.getTime())) {
+    var m = /(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(s);
+    if (m) d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
   }
+  $('asOf').textContent = isNaN(d.getTime())
+    ? 'synced ' + String(s).slice(0, 16)
+    : 'synced ' + d.toLocaleString(undefined,
+        { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 function net() {
