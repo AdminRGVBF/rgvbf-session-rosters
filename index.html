@@ -217,6 +217,7 @@
   </div>
 
   <div class="controls">
+    <select id="cat"></select>
     <select id="day"></select>
     <select id="session"></select>
     <input type="search" id="q" placeholder="Search name or phone" autocomplete="off">
@@ -281,7 +282,7 @@ var DB = (function () {
 })();
 
 /* ---------- state ---------- */
-var state = { pass: '', data: null, day: '', session: '' };
+var state = { pass: '', data: null, cat: 'All', day: '', session: '' };
 
 var $ = function (id) { return document.getElementById(id); };
 
@@ -338,7 +339,7 @@ function render() {
     $('out').innerHTML = '<div class="empty">No rosters yet.<br>Tap Refresh while online.</div>';
     return;
   }
-  var s = d.sessions.filter(function (x) { return x.id === state.session; })[0];
+  var s = inScope().filter(function (x) { return x.id === state.session; })[0];
   if (!s) { $('out').innerHTML = '<div class="empty">Pick a trip above.</div>'; return; }
   $('out').innerHTML = sheetHTML(s, $('q').value.trim().toLowerCase());
 }
@@ -388,6 +389,14 @@ function sheetHTML(s, needle) {
 /* Single ordering rule used by the pickers, the screen and Print all:
    date → departure time → trip name. Anything without a time sorts last
    within its day rather than jumping to the top. */
+/* Every list in the app — the day picker, the trip picker and Print all —
+   reads from this, so the category filter can never disagree with itself. */
+function inScope() {
+  var all = (state.data && state.data.sessions) || [];
+  if (state.cat === 'All') return all;
+  return all.filter(function (s) { return (s.cat || '') === state.cat; });
+}
+
 function bySchedule(a, b) {
   var at = a.time || '99:99', bt = b.time || '99:99';
   return (a.date + at + a.name).localeCompare(b.date + bt + b.name);
@@ -397,11 +406,25 @@ function fillPickers() {
   var d = state.data;
   if (!d) return;
 
-  var days = [];
+  var cats = [];
   d.sessions.forEach(function (s) {
+    var c = s.cat || '';
+    if (c && cats.indexOf(c) === -1) cats.push(c);
+  });
+  cats.sort();
+  if (state.cat !== 'All' && cats.indexOf(state.cat) === -1) state.cat = 'All';
+  $('cat').innerHTML = ['All'].concat(cats).map(function (c) {
+    return '<option value="' + esc(c) + '"' + (c === state.cat ? ' selected' : '') + '>' +
+      (c === 'All' ? 'All sessions' : esc(c)) + '</option>';
+  }).join('');
+
+  var scope = inScope();
+  var days = [];
+  scope.forEach(function (s) {
     if (days.indexOf(s.date) === -1) days.push(s.date);
   });
   days.sort();
+  if (days.indexOf(state.day) === -1) state.day = '';
 
   var today = new Date().toISOString().slice(0, 10);
   if (!state.day) state.day = days.indexOf(today) !== -1 ? today : (days[0] || '');
@@ -411,7 +434,7 @@ function fillPickers() {
       esc(dayLabel(x)) + '</option>';
   }).join('');
 
-  var forDay = d.sessions.filter(function (s) { return s.date === state.day; });
+  var forDay = scope.filter(function (s) { return s.date === state.day; });
   forDay.sort(bySchedule);
   if (!forDay.filter(function (s) { return s.id === state.session; }).length) {
     state.session = forDay.length ? forDay[0].id : '';
@@ -509,7 +532,7 @@ function unlock() {
 function printAll() {
   var d = state.data;
   if (!d) return;
-  var forDay = d.sessions.filter(function (s) { return s.date === state.day; });
+  var forDay = inScope().filter(function (s) { return s.date === state.day; });
   forDay.sort(bySchedule);
   if (!forDay.length) return;
 
@@ -551,6 +574,10 @@ function printAll() {
 /* ---------- wiring ---------- */
 $('unlock').addEventListener('click', unlock);
 $('pass').addEventListener('keydown', function (e) { if (e.key === 'Enter') unlock(); });
+$('cat').addEventListener('change', function () {
+  state.cat = this.value; state.day = ''; state.session = '';
+  fillPickers(); render();
+});
 $('day').addEventListener('change', function () {
   state.day = this.value; state.session = ''; fillPickers(); render();
 });
